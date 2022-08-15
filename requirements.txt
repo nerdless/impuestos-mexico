@@ -1,0 +1,6 @@
+scrapy
+pudb==2022.1.1
+ipython==8.1.1
+python-dateutil==2.8.2
+jupyterlab==3.4.3
+pandas==1.4.3
