@@ -4,3 +4,5 @@ ipython==8.1.1
 python-dateutil==2.8.2
 jupyterlab==3.4.3
 pandas==1.4.3
+alembic==1.8.1
+mysqlclient==2.1.1
