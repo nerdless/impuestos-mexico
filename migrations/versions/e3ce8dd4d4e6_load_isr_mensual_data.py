@@ -36,4 +36,4 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    pass
+    op.execute('DELETE FROM isr_mensual')
