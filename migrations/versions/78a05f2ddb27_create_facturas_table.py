@@ -20,7 +20,7 @@ def upgrade() -> None:
     op.execute(
         """CREATE TABLE facturas (
             id VARCHAR(250),
-            key VARCHAR(250),
+            filepath VARCHAR(250),
             fecha TIMESTAMP,
             receptor_rfc VARCHAR(250),
             receptor_nombre VARCHAR(250),

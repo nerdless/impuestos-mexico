@@ -43,7 +43,7 @@ class Concepto(BaseModel):
 class Factura(BaseModel):
     """Factura model."""
     id: str
-    key: str
+    filepath: str
     fecha: datetime
     receptor_rfc: str
     receptor_nombre: str
@@ -103,7 +103,7 @@ def get_factura(filekey, sourcebucketname):
     conceptos = [Concepto(factura_id=factura_id, emisor=factura_info['cfdi:Emisor']['@rfc'], descripcion=concepto['@descripcion']) for concepto in conceptos_list]
 
     factura_item = Factura(id=factura_id,
-    key=filekey,
+    filepath=filekey,
     fecha=parser.parse(factura_info['@fecha']),
     receptor=factura_info['cfdi:Receptor']['@rfc'],
     emisor=factura_info['cfdi:Emisor']['@rfc'],
