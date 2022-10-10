@@ -18,16 +18,15 @@ depends_on = None
 
 def upgrade() -> None:
     op.execute(
-        """CREATE TABLE deducibles (
-            receptor VARCHAR(250),
-            emisor VARCHAR(250),
-            concepto VARCHAR(250),
-            concepto_id VARCHAR(250),
-            deducible BOOLEAN,
-            PRIMARY KEY (receptor, emisor, concepto_id)
+        """CREATE TABLE conceptos (
+            factura_id VARCHAR(250),
+            emisor_rfc VARCHAR(250),
+            emisor_nombre VARCHAR(250),
+            descripcion VARCHAR(250),
+            deducible BOOLEAN
             )"""
     )
 
 
 def downgrade() -> None:
-    op.drop_table('deducibles')
+    op.drop_table('conceptos')

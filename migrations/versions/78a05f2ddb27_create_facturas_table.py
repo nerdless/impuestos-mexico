@@ -20,10 +20,12 @@ def upgrade() -> None:
     op.execute(
         """CREATE TABLE facturas (
             id VARCHAR(250),
+            key VARCHAR(250),
             fecha TIMESTAMP,
-            receptor VARCHAR(250),
-            emisor VARCHAR(250),
-            concepto VARCHAR(250),
+            receptor_rfc VARCHAR(250),
+            receptor_nombre VARCHAR(250),
+            emisor_rfc VARCHAR(250),
+            emisor_nombre VARCHAR(250),
             tipo_comprobante VARCHAR(250),
             subtotal DOUBLE,
             total DOUBLE,
@@ -31,8 +33,6 @@ def upgrade() -> None:
             isr_retenido DOUBLE,
             iva_trasladado DOUBLE,
             isr_trasladado DOUBLE,
-            ieps_trasladado DOUBLE,
-            total_trasladado DOUBLE,
             deducible BOOLEAN,
             PRIMARY KEY (id)
             )"""
