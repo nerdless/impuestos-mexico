@@ -31,7 +31,7 @@ def upgrade() -> None:
             total_gravado DOUBLE,
             total_retenido DOUBLE,
             isr_retenido DOUBLE,
-            issm_retenido DOUBLE,
+            imss_retenido DOUBLE,
             PRIMARY KEY (id)
             )"""
     )

@@ -70,16 +70,59 @@ class Factura(BaseModel):
     conceptos: List[Concepto]
     deducible: Optional[bool]
 
+class Nomina(BaseModel):
+    """Nomina model."""
+    id: str
+    fecha_inicial: datetime
+    fecha_final: datetime
+    fecha_pago: datetime
+    receptor: str
+    emisor: str
+    percepciones: float
+    deducciones: float
+    otros_pagos: float
+    total_gravado: float
+    total_retenido: float
+    isr_retenido: float
+    imss_retenido: float
+
+def get_nomina(factura_info, filekey):
+    id = filekey.split('/')[-1].replace('.xml', '')
+    deducciones = factura_info['cfdi:Complemento']['nomina12:Nomina']['nomina12:Deducciones']['nomina12:Deduccion']
+    importes = {deduccion[key].lower(): deduccion['@Importe'] for deduccion in deducciones for key in deduccion if 'concepto' in key.lower()}
+    isr_retenido = sum([float(importes[key]) for key in importes if 'isr' in key])
+    imss_retenido = sum([float(importes[key]) for key in importes if 'imss' in key])
+
+    return Nomina(id=id, fecha_inicial=parser.parse(factura_info['cfdi:Complemento']['nomina12:Nomina']['@FechaInicialPago']),
+                  fecha_final=parser.parse(factura_info['cfdi:Complemento']['nomina12:Nomina']['@FechaFinalPago']),
+                  fecha_pago=parser.parse(factura_info['cfdi:Complemento']['nomina12:Nomina']['@FechaPago']),
+                  receptor=factura_info['cfdi:Receptor']['@rfc'], emisor=factura_info['cfdi:Emisor']['@rfc'],
+                  percepciones=float(factura_info['cfdi:Complemento']['nomina12:Nomina']['@TotalPercepciones']),
+                  deducciones=float(factura_info['cfdi:Complemento']['nomina12:Nomina']['@TotalDeducciones']),
+                  otros_pagos=float(factura_info['cfdi:Complemento']['nomina12:Nomina']['@TotalOtrosPagos']),
+                  total_gravado=float(factura_info['cfdi:Complemento']['nomina12:Nomina']['nomina12:Percepciones']['@TotalGravado']),
+                  total_retenido=float(factura_info['cfdi:Complemento']['nomina12:Nomina']['nomina12:Deducciones']['@TotalImpuestosRetenidos']),
+                  isr_retenido=float(factura_info['cfdi:Complemento']['nomina12:Nomina']['nomina12:Deducciones']['@TotalImpuestosRetenidos']),
+                  imss_retenido=imss_retenido,
+                  irs_retenido=isr_retenido
+                  )
+
+def add_nomina(nomina: Nomina):
+    values = '\',\''.join([str(value) for value in nomina.dict().values()])
+    query = f"Insert ignore into nomina ({','.join(nomina.dict().keys())}) values ('{values}')"
+    with conn.cursor() as cur:
+        cur.execute(query)
+        conn.commit()
 
 def add_concept(concepto: Concepto):
-    query = "Insert into conceptos (factura_id, emisor_rfc, emisor_nombre, descripcion) values "
+    query = "Insert ignore into conceptos (factura_id, emisor_rfc, emisor_nombre, descripcion) values "
     query += f"('{concepto.factura_id}', '{concepto.emisor_rfc}', '{concepto.emisor_nombre}', '{concepto.descripcion}')"
     with conn.cursor() as cur:
         cur.execute(query)
         conn.commit()
 
 def add_factura(factura: Factura):
-    query = "Insert into facturas (id, filepath, fecha, receptor_rfc, receptor_nombre, emisor_nombre, emisor_rfc, tipo_comprobante, subtotal, total, iva_retenido, isr_retenido, iva_trasladado, isr_trasladado) values "
+    query = "Insert ignore into facturas (id, filepath, fecha, receptor_rfc, receptor_nombre, emisor_nombre, emisor_rfc, tipo_comprobante, subtotal, total, iva_retenido, isr_retenido, iva_trasladado, isr_trasladado) values "
     query += f"('{factura.id}', '{factura.filepath}', '{factura.fecha}', '{factura.receptor_rfc}', '{factura.receptor_nombre}', '{factura.emisor_nombre}', '{factura.emisor_rfc}', '{factura.tipo_comprobante}', '{factura.subtotal}', '{factura.total}', '{factura.iva_retenido}', '{factura.isr_retenido}', '{factura.iva_trasladado}', '{factura.isr_trasladado}')"
     with conn.cursor() as cur:
         cur.execute(query)
@@ -95,13 +138,15 @@ def get_factura(filekey, sourcebucketname):
         logger.info(f'Error: Unable to load file: {e}')
         return None
     factura_info = factura_dict['cfdi:Comprobante']
-
-    if '@xmlns:nomina12' in factura_info or not factura_info.get('cfdi:Impuestos'):
-        #TODO guadar en nomina
-        return None
-
     factura_info['cfdi:Receptor'] = {key.lower(): factura_info['cfdi:Receptor'][key] for key in factura_info['cfdi:Receptor']}
     factura_info['cfdi:Emisor'] = {key.lower(): factura_info['cfdi:Emisor'][key] for key in factura_info['cfdi:Emisor']}
+
+    if '@xmlns:nomina12' in factura_info: 
+        return get_nomina(factura_info, filekey)
+    
+    if not factura_info.get('cfdi:Impuestos'):
+        return None
+
     factura_id = filekey.split('/')[-1].replace('.xml', '')
     impuestos_trasladados = factura_info.get('cfdi:Impuestos', {}).get('cfdi:Traslados', {}).get('cfdi:Traslado', [])
     impuestos_trasladados = [impuestos_trasladados] if isinstance(impuestos_trasladados, dict) else impuestos_trasladados
@@ -143,10 +188,26 @@ def lambda_handler(event, context):
     key = urllib.parse.unquote_plus(event['Records'][0]['s3']['object']['key'], encoding='utf-8')
     logger.info(f'current file to save: {key}')
     factura = get_factura(key, bucket)
-    if factura:
+    if isinstance(factura, Factura):
+        try:
+            add_factura(factura)
+        except Exception as e:
+            conn.close()
+            raise Exception(e)
         for concepto in factura.conceptos:
-            add_concept(concepto)
-        add_factura(factura)    
+            try:
+                add_concept(concepto)
+            except Exception as e:
+                conn.close()
+                raise Exception(e)
+    elif isinstance(factura, Nomina):
+        try:
+            add_nomina(factura)
+        except Exception as e:
+            conn.close()
+            raise Exception(e)
+    else:
+        logger.info('No factura to add.')
     return {
         'statusCode': 200
     }
