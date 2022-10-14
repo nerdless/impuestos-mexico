@@ -21,9 +21,11 @@ def upgrade() -> None:
         """CREATE TABLE conceptos (
             factura_id VARCHAR(250),
             emisor_rfc VARCHAR(250),
+            receptor_rfc VARCHAR(250),
             emisor_nombre VARCHAR(250),
             descripcion VARCHAR(250),
-            deducible BOOLEAN
+            deducible BOOLEAN,
+            PRIMARY KEY (factura_id, descripcion)
             )"""
     )
 

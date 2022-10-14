@@ -46,6 +46,7 @@ class Concepto(BaseModel):
     """Concepto model."""
     factura_id: str
     emisor_rfc: str
+    receptor_rfc: str
     emisor_nombre: str
     descripcion: Optional[str]
     deducible: Optional[bool]
@@ -115,8 +116,8 @@ def add_nomina(nomina: Nomina):
         conn.commit()
 
 def add_concept(concepto: Concepto):
-    query = "Insert ignore into conceptos (factura_id, emisor_rfc, emisor_nombre, descripcion) values "
-    query += f"('{concepto.factura_id}', '{concepto.emisor_rfc}', '{concepto.emisor_nombre}', '{concepto.descripcion}')"
+    query = "Insert ignore into conceptos (factura_id, emisor_rfc, emisor_nombre, receptor_rfc, descripcion) values "
+    query += f"('{concepto.factura_id}', '{concepto.emisor_rfc}', '{concepto.emisor_nombre}', '{concepto.receptor_rfc}',  '{concepto.descripcion}')"
     with conn.cursor() as cur:
         cur.execute(query)
         conn.commit()
@@ -160,7 +161,11 @@ def get_factura(filekey, sourcebucketname):
     isr_retenido = sum([float(impuesto['@importe']) for impuesto in impuestos_retenidos if impuesto['@impuesto'] in isr_aliases])
     conceptos_list = [concepto for concepto in factura_info['cfdi:Conceptos']['cfdi:Concepto']] if isinstance(factura_info['cfdi:Conceptos']['cfdi:Concepto'], list) else [factura_info['cfdi:Conceptos']['cfdi:Concepto']]
     conceptos_list = [{key.lower(): concepto[key] for key in concepto} for concepto in conceptos_list]
-    conceptos = [Concepto(factura_id=factura_id, receptor_rfc=factura_info['cfdi:Receptor']['@rfc'], receptor_nombre=factura_info['cfdi:Receptor']['@nombre'], emisor_nombre=factura_info['cfdi:Emisor']['@nombre'], emisor_rfc=factura_info['cfdi:Emisor']['@rfc'], descripcion=concepto['@descripcion']) for concepto in conceptos_list]
+    conceptos = [Concepto(factura_id=factura_id, 
+                          receptor_rfc=factura_info['cfdi:Receptor']['@rfc'],
+                          emisor_rfc=factura_info['cfdi:Emisor']['@rfc'],
+                          emisor_nombre=factura_info['cfdi:Emisor']['@nombre'], 
+                          descripcion=concepto['@descripcion']) for concepto in conceptos_list]
 
     factura_item = Factura(id=factura_id,
     filepath=filekey,
