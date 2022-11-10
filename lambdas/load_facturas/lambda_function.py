@@ -18,7 +18,7 @@ import sys
 #     with open(file, 'r') as f:
 #         facturas.append(parse(f.read())['cfdi:Comprobante'])
 
-
+donatarias = ['GME920514V69']
 
 iva_aliases = ['IVA', 'iva', '002']
 isr_aliases = ['ISR', 'isr', '001']
@@ -108,6 +108,35 @@ def get_nomina(factura_info, filekey):
                   irs_retenido=isr_retenido
                   )
 
+def get_donation(factura_info, filekey):
+    factura_id = filekey.split('/')[-1].replace('.xml', '')
+    conceptos_list = [concepto for concepto in factura_info['cfdi:Conceptos']['cfdi:Concepto']] if isinstance(factura_info['cfdi:Conceptos']['cfdi:Concepto'], list) else [factura_info['cfdi:Conceptos']['cfdi:Concepto']]
+    conceptos_list = [{key.lower(): concepto[key] for key in concepto} for concepto in conceptos_list]
+    conceptos = [Concepto(factura_id=factura_id, 
+                          receptor_rfc=factura_info['cfdi:Receptor']['@rfc'],
+                          emisor_rfc=factura_info['cfdi:Emisor']['@rfc'],
+                          emisor_nombre=factura_info['cfdi:Emisor']['@nombre'], 
+                          descripcion=concepto['@descripcion']) for concepto in conceptos_list]
+
+    factura_item = Factura(id=factura_id,
+    filepath=filekey,
+    fecha=parser.parse(factura_info.get('@fecha') or factura_info['@Fecha']),
+    receptor_rfc=factura_info['cfdi:Receptor']['@rfc'],
+    receptor_nombre=factura_info['cfdi:Receptor']['@nombre'],
+    emisor_rfc=factura_info['cfdi:Emisor']['@rfc'],
+    emisor_nombre=factura_info['cfdi:Emisor']['@nombre'],
+    tipo_comprobante=factura_info.get('@tipoDeComprobante') or factura_info['@TipoDeComprobante'],
+    subtotal=float(factura_info.get('@subTotal') or factura_info['@SubTotal']),
+    total=float(factura_info.get('@total') or factura_info['@Total']),
+    isr_retenido=0,
+    iva_retenido=0,
+    isr_trasladado=0,
+    iva_trasladado=0,
+    conceptos=conceptos,
+    deducible=None
+    )
+    return factura_item
+
 def add_nomina(nomina: Nomina):
     values = '\',\''.join([str(value) for value in nomina.dict().values()])
     query = f"Insert ignore into nomina ({','.join(nomina.dict().keys())}) values ('{values}')"
@@ -144,6 +173,10 @@ def get_factura(filekey, sourcebucketname):
 
     if '@xmlns:nomina12' in factura_info: 
         return get_nomina(factura_info, filekey)
+
+    if factura_info['cfdi:Emisor']['@rfc'] in donatarias:
+        logger.info("Emisor is a donataria")
+        return get_donation(factura_info, filekey)
     
     if not factura_info.get('cfdi:Impuestos'):
         return None
