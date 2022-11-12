@@ -34,13 +34,29 @@ name = os.environ['user']
 password = os.environ['password']
 db_name = os.environ['db_name']
 
+def get_connection():
+    try:
+    	conn = pymysql.connect(host=rds_host, user=name, passwd=password, db=db_name, connect_timeout=5)
+    except pymysql.MySQLError as e:
+        logger.error("ERROR: Unexpected error: Could not connect to MySQL instance.")
+        logger.error(e)
+        sys.exit()
+    return conn
 
-try:
-	conn = pymysql.connect(host=rds_host, user=name, passwd=password, db=db_name, connect_timeout=5)
-except pymysql.MySQLError as e:
-	logger.error("ERROR: Unexpected error: Could not connect to MySQL instance.")
-	logger.error(e)
-	sys.exit()
+def execute_query(conn, query):
+    max_tries = 5
+    try_number=0
+    while not conn.open and try_number < max_tries:
+        logger.info('Reconnecting to database...')
+        conn = get_connection()
+        try_number += 1
+    if try_number > 0:
+        logger.info('Now connected!')
+    with conn.cursor() as cur:
+        cur.execute(query)
+        conn.commit()
+
+conn = get_connection()
 
 class Concepto(BaseModel):
     """Concepto model."""
@@ -140,24 +156,17 @@ def get_donation(factura_info, filekey):
 def add_nomina(nomina: Nomina):
     values = '\',\''.join([str(value) for value in nomina.dict().values()])
     query = f"Insert ignore into nomina ({','.join(nomina.dict().keys())}) values ('{values}')"
-    with conn.cursor() as cur:
-        cur.execute(query)
-        conn.commit()
+    execute_query(conn, query)
 
 def add_concept(concepto: Concepto):
     query = "Insert ignore into conceptos (factura_id, emisor_rfc, emisor_nombre, receptor_rfc, descripcion) values "
     query += f"('{concepto.factura_id}', '{concepto.emisor_rfc}', '{concepto.emisor_nombre}', '{concepto.receptor_rfc}',  '{concepto.descripcion}')"
-    with conn.cursor() as cur:
-        cur.execute(query)
-        conn.commit()
+    execute_query(conn, query)
 
 def add_factura(factura: Factura):
     query = "Insert ignore into facturas (id, filepath, fecha, receptor_rfc, receptor_nombre, emisor_nombre, emisor_rfc, tipo_comprobante, subtotal, total, iva_retenido, isr_retenido, iva_trasladado, isr_trasladado) values "
     query += f"('{factura.id}', '{factura.filepath}', '{factura.fecha}', '{factura.receptor_rfc}', '{factura.receptor_nombre}', '{factura.emisor_nombre}', '{factura.emisor_rfc}', '{factura.tipo_comprobante}', '{factura.subtotal}', '{factura.total}', '{factura.iva_retenido}', '{factura.isr_retenido}', '{factura.iva_trasladado}', '{factura.isr_trasladado}')"
-    with conn.cursor() as cur:
-        cur.execute(query)
-        conn.commit()
-
+    execute_query(conn, query)
 
 def get_factura(filekey, sourcebucketname):
     try:
@@ -246,6 +255,8 @@ def lambda_handler(event, context):
             raise Exception(e)
     else:
         logger.info('No factura to add.')
+    if conn.open:
+        conn.close()
     return {
         'statusCode': 200
     }
