@@ -1,11 +1,42 @@
 import argparse
+from calendar import month
+from datetime import date, datetime
 import os
 from typing import List
+import logging
+from dateutil.relativedelta import relativedelta
+from src.adapters.concepto_repository import MySQLConceptosRepository
+from src.adapters.facturas_repository import MySQLFacturasRepository
+from src.domain.factura import Deducible
+from src.settings import localconfig
+import pudb
 
 my_rfc = os.environ['RFC']
 
 def classify_facturas_deducibles(facturas: List):
     """ Classify facturas as deducibles."""
+    # Look for conceptos not classified
+    concepto_repo = MySQLConceptosRepository(logging.getLogger(), localconfig)
+    facturas_deducibles = []
+    for factura in facturas:
+        deducible = True
+        for concepto in factura.conceptos:
+            if concepto.deducible is None:
+                # ask for a classifycation
+                print(concepto)
+                concepto.deducible = bool(input('Is that concepto deducible?: '))
+                # add deducible
+                concepto_repo.add(Deducible(**concepto.dict()))
+            deducible &= concepto.deducible
+        if deducible:
+            facturas_deducibles.append(factura)
+    concepto_repo.close_connection()
+    return facturas_deducibles
+        
+
+    # delete factura and concepto
+    # add factura and concepto
+    # Get facturas classified
     return facturas
 
 def generate_iva_mensual_report(facturas: List):
@@ -35,10 +66,18 @@ if __name__ == "__main__":
     declaration_type = 'mensual' if args.mes else 'anual'
 
     print(f"declaracion {declaration_type} for {args.rfc}")
-
+    if declaration_type == 'mensual':
+        since_date = datetime(args.anio, args.mes, 1)
+        until_date = since_date + relativedelta(months=1)
+    else:
+        since_date = datetime(args.anio, 1, 1)
+        until_date = since_date + relativedelta(years=1)
+    
+    facturas_repo = MySQLFacturasRepository(logging.getLogger(), localconfig)
+    
     # bring all facturas of the month with the concept
-    facturas = []
-
+    facturas = facturas_repo.filter(rfc=args.rfc, since_date=since_date.date(), until_date=until_date.date())
+    facturas_repo.close_connection()
     # Ensure all facturas are clasified between deducible and not deducible
     facturas = classify_facturas_deducibles(facturas)
 

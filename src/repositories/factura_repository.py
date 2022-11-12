@@ -1,6 +1,8 @@
 """Abstract raw facturas repository."""
 from abc import ABC, abstractmethod
-from typing import Any, List, Optional, Dict
+from datetime import datetime
+from typing import List, Optional, Dict
+from domain.factura import Factura
 
 class AbstractFacturasRepository(ABC):
     """FacturasRepository."""
@@ -8,8 +10,11 @@ class AbstractFacturasRepository(ABC):
     @abstractmethod
     def filter(
         self,
-        ids: Optional[List[str]] = None,
-    ) -> List[Dict]:
+        rfc: str,
+        factura_ids: Optional[List[Factura]] = None,
+        since_date: Optional[datetime] = None,
+        until_date: Optional[datetime] = None
+    ) -> List[Factura]:
         """Filter raw facturas."""
         raise NotImplementedError
 

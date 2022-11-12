@@ -1,2 +1,0 @@
-from factura_repository import AbstractFacturasRepository
-from nomina_repository import AbstractRawFacturasRepository
