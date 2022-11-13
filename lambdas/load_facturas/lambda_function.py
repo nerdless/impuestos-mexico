@@ -10,13 +10,16 @@ from pydantic import BaseModel
 import os
 import sys
 
-# import glob
+def lowercase_processor(path, key, value):
+    return key.lower(), value
 
-# facturas_files = glob.glob('files/*.xml')
-# facturas = []
-# for file in facturas_files:
-#     with open(file, 'r') as f:
-#         facturas.append(parse(f.read())['cfdi:Comprobante'])
+import glob
+
+facturas_files = glob.glob('files/*.xml')
+facturas = []
+for file in facturas_files:
+    with open(file, 'r') as f:
+        facturas.append(parse(f.read(), postprocessor=lowercase_processor)['cfdi:comprobante'])
 
 donatarias = ['GME920514V69']
 
@@ -105,45 +108,45 @@ class Nomina(BaseModel):
 
 def get_nomina(factura_info, filekey):
     id = filekey.split('/')[-1].replace('.xml', '')
-    deducciones = factura_info['cfdi:Complemento']['nomina12:Nomina']['nomina12:Deducciones']['nomina12:Deduccion']
-    importes = {deduccion[key].lower(): deduccion['@Importe'] for deduccion in deducciones for key in deduccion if 'concepto' in key.lower()}
+    deducciones = factura_info['cfdi:complemento']['nomina12:nomina']['nomina12:deducciones']['nomina12:deduccion']
+    importes = {deduccion[key].lower(): deduccion['@importe'] for deduccion in deducciones for key in deduccion if 'concepto' in key.lower()}
     isr_retenido = sum([float(importes[key]) for key in importes if 'isr' in key])
     imss_retenido = sum([float(importes[key]) for key in importes if 'imss' in key])
 
-    return Nomina(id=id, fecha_inicial=parser.parse(factura_info['cfdi:Complemento']['nomina12:Nomina']['@FechaInicialPago']),
-                  fecha_final=parser.parse(factura_info['cfdi:Complemento']['nomina12:Nomina']['@FechaFinalPago']),
-                  fecha_pago=parser.parse(factura_info['cfdi:Complemento']['nomina12:Nomina']['@FechaPago']),
-                  receptor=factura_info['cfdi:Receptor']['@rfc'], emisor=factura_info['cfdi:Emisor']['@rfc'],
-                  percepciones=float(factura_info['cfdi:Complemento']['nomina12:Nomina']['@TotalPercepciones']),
-                  deducciones=float(factura_info['cfdi:Complemento']['nomina12:Nomina']['@TotalDeducciones']),
-                  otros_pagos=float(factura_info['cfdi:Complemento']['nomina12:Nomina']['@TotalOtrosPagos']),
-                  total_gravado=float(factura_info['cfdi:Complemento']['nomina12:Nomina']['nomina12:Percepciones']['@TotalGravado']),
-                  total_retenido=float(factura_info['cfdi:Complemento']['nomina12:Nomina']['nomina12:Deducciones']['@TotalImpuestosRetenidos']),
-                  isr_retenido=float(factura_info['cfdi:Complemento']['nomina12:Nomina']['nomina12:Deducciones']['@TotalImpuestosRetenidos']),
+    return Nomina(id=id, fecha_inicial=parser.parse(factura_info['cfdi:complemento']['nomina12:nomina']['@fechainicialpago']),
+                  fecha_final=parser.parse(factura_info['cfdi:complemento']['nomina12:nomina']['@fechafinalpago']),
+                  fecha_pago=parser.parse(factura_info['cfdi:complemento']['nomina12:nomina']['@fechapago']),
+                  receptor=factura_info['cfdi:receptor']['@rfc'], emisor=factura_info['cfdi:emisor']['@rfc'],
+                  percepciones=float(factura_info['cfdi:complemento']['nomina12:nomina']['@totalpercepciones']),
+                  deducciones=float(factura_info['cfdi:complemento']['nomina12:nomina']['@totaldeducciones']),
+                  otros_pagos=float(factura_info['cfdi:complemento']['nomina12:nomina']['@totalotrospagos']),
+                  total_gravado=float(factura_info['cfdi:complemento']['nomina12:nomina']['nomina12:percepciones']['@totalgravado']),
+                  total_retenido=float(factura_info['cfdi:complemento']['nomina12:nomina']['nomina12:deducciones']['@totalimpuestosretenidos']),
+                  isr_retenido=float(factura_info['cfdi:complemento']['nomina12:nomina']['nomina12:deducciones']['@totalimpuestosretenidos']),
                   imss_retenido=imss_retenido,
                   irs_retenido=isr_retenido
                   )
 
 def get_donation(factura_info, filekey):
     factura_id = filekey.split('/')[-1].replace('.xml', '')
-    conceptos_list = [concepto for concepto in factura_info['cfdi:Conceptos']['cfdi:Concepto']] if isinstance(factura_info['cfdi:Conceptos']['cfdi:Concepto'], list) else [factura_info['cfdi:Conceptos']['cfdi:Concepto']]
+    conceptos_list = [concepto for concepto in factura_info['cfdi:conceptos']['cfdi:concepto']] if isinstance(factura_info['cfdi:conceptos']['cfdi:concepto'], list) else [factura_info['cfdi:conceptos']['cfdi:concepto']]
     conceptos_list = [{key.lower(): concepto[key] for key in concepto} for concepto in conceptos_list]
     conceptos = [Concepto(factura_id=factura_id, 
-                          receptor_rfc=factura_info['cfdi:Receptor']['@rfc'],
-                          emisor_rfc=factura_info['cfdi:Emisor']['@rfc'],
-                          emisor_nombre=factura_info['cfdi:Emisor']['@nombre'], 
+                          receptor_rfc=factura_info['cfdi:receptor']['@rfc'],
+                          emisor_rfc=factura_info['cfdi:emisor']['@rfc'],
+                          emisor_nombre=factura_info['cfdi:emisor']['@nombre'], 
                           descripcion=concepto['@descripcion']) for concepto in conceptos_list]
 
     factura_item = Factura(id=factura_id,
     filepath=filekey,
-    fecha=parser.parse(factura_info.get('@fecha') or factura_info['@Fecha']),
-    receptor_rfc=factura_info['cfdi:Receptor']['@rfc'],
-    receptor_nombre=factura_info['cfdi:Receptor']['@nombre'],
-    emisor_rfc=factura_info['cfdi:Emisor']['@rfc'],
-    emisor_nombre=factura_info['cfdi:Emisor']['@nombre'],
-    tipo_comprobante=factura_info.get('@tipoDeComprobante') or factura_info['@TipoDeComprobante'],
-    subtotal=float(factura_info.get('@subTotal') or factura_info['@SubTotal']),
-    total=float(factura_info.get('@total') or factura_info['@Total']),
+    fecha=parser.parse(factura_info.get('@fecha') or factura_info['@fecha']),
+    receptor_rfc=factura_info['cfdi:receptor']['@rfc'],
+    receptor_nombre=factura_info['cfdi:receptor']['@nombre'],
+    emisor_rfc=factura_info['cfdi:emisor']['@rfc'],
+    emisor_nombre=factura_info['cfdi:emisor']['@nombre'],
+    tipo_comprobante=factura_info.get('@tipodecomprobante') or factura_info['@tipodecomprobante'],
+    subtotal=float(factura_info.get('@subtotal') or factura_info['@subtotal']),
+    total=float(factura_info.get('@total') or factura_info['@total']),
     isr_retenido=0,
     iva_retenido=0,
     isr_trasladado=0,
@@ -172,53 +175,53 @@ def get_factura(filekey, sourcebucketname):
     try:
         factura_file = s3_resource.Object(bucket_name=sourcebucketname, key=filekey)
         factura = factura_file.get()["Body"].read()
-        factura_dict = parse(factura)
+        factura_dict = parse(factura, postprocessor=lowercase_processor)
     except Exception as e:  
         logger.info(f'Error: Unable to load file: {e}')
         return None
-    factura_info = factura_dict['cfdi:Comprobante']
-    factura_info['cfdi:Receptor'] = {key.lower(): factura_info['cfdi:Receptor'][key] for key in factura_info['cfdi:Receptor']}
-    factura_info['cfdi:Emisor'] = {key.lower(): factura_info['cfdi:Emisor'][key] for key in factura_info['cfdi:Emisor']}
+    factura_info = factura_dict['cfdi:comprobante']
+    factura_info['cfdi:receptor'] = {key.lower(): factura_info['cfdi:receptor'][key] for key in factura_info['cfdi:receptor']}
+    factura_info['cfdi:emisor'] = {key.lower(): factura_info['cfdi:emisor'][key] for key in factura_info['cfdi:emisor']}
 
     if '@xmlns:nomina12' in factura_info: 
         return get_nomina(factura_info, filekey)
 
-    if factura_info['cfdi:Emisor']['@rfc'] in donatarias:
+    if factura_info['cfdi:emisor']['@rfc'] in donatarias:
         logger.info("Emisor is a donataria")
         return get_donation(factura_info, filekey)
     
-    if not factura_info.get('cfdi:Impuestos'):
+    if not factura_info.get('cfdi:impuestos'):
         return None
 
     factura_id = filekey.split('/')[-1].replace('.xml', '')
-    impuestos_trasladados = factura_info.get('cfdi:Impuestos', {}).get('cfdi:Traslados', {}).get('cfdi:Traslado', [])
+    impuestos_trasladados = factura_info.get('cfdi:impuestos', {}).get('cfdi:traslados', {}).get('cfdi:traslado', [])
     impuestos_trasladados = [impuestos_trasladados] if isinstance(impuestos_trasladados, dict) else impuestos_trasladados
     impuestos_trasladados = [{key.lower(): impuesto[key] for key in impuesto} for impuesto in impuestos_trasladados]
     iva_trasladado = sum([float(impuesto['@importe']) for impuesto in impuestos_trasladados if impuesto['@impuesto'] in iva_aliases])
     isr_trasladado = sum([float(impuesto['@importe']) for impuesto in impuestos_trasladados if impuesto['@impuesto'] in isr_aliases])
 
-    impuestos_retenidos =  factura_info.get('cfdi:Impuestos', {}).get('cfdi:Retenciones', {}).get('cfdi:Retencion', [])
+    impuestos_retenidos =  factura_info.get('cfdi:impuestos', {}).get('cfdi:retenciones', {}).get('cfdi:retencion', [])
     impuestos_retenidos = [impuestos_retenidos] if isinstance(impuestos_retenidos, dict) else impuestos_retenidos
     iva_retenido = sum([float(impuesto['@importe']) for impuesto in impuestos_retenidos if impuesto['@impuesto'] in iva_aliases])
     isr_retenido = sum([float(impuesto['@importe']) for impuesto in impuestos_retenidos if impuesto['@impuesto'] in isr_aliases])
-    conceptos_list = [concepto for concepto in factura_info['cfdi:Conceptos']['cfdi:Concepto']] if isinstance(factura_info['cfdi:Conceptos']['cfdi:Concepto'], list) else [factura_info['cfdi:Conceptos']['cfdi:Concepto']]
+    conceptos_list = [concepto for concepto in factura_info['cfdi:conceptos']['cfdi:concepto']] if isinstance(factura_info['cfdi:conceptos']['cfdi:concepto'], list) else [factura_info['cfdi:conceptos']['cfdi:concepto']]
     conceptos_list = [{key.lower(): concepto[key] for key in concepto} for concepto in conceptos_list]
     conceptos = [Concepto(factura_id=factura_id, 
-                          receptor_rfc=factura_info['cfdi:Receptor']['@rfc'],
-                          emisor_rfc=factura_info['cfdi:Emisor']['@rfc'],
-                          emisor_nombre=factura_info['cfdi:Emisor']['@nombre'], 
+                          receptor_rfc=factura_info['cfdi:receptor']['@rfc'],
+                          emisor_rfc=factura_info['cfdi:emisor']['@rfc'],
+                          emisor_nombre=factura_info['cfdi:emisor']['@nombre'], 
                           descripcion=concepto['@descripcion']) for concepto in conceptos_list]
 
     factura_item = Factura(id=factura_id,
     filepath=filekey,
-    fecha=parser.parse(factura_info.get('@fecha') or factura_info['@Fecha']),
-    receptor_rfc=factura_info['cfdi:Receptor']['@rfc'],
-    receptor_nombre=factura_info['cfdi:Receptor']['@nombre'],
-    emisor_rfc=factura_info['cfdi:Emisor']['@rfc'],
-    emisor_nombre=factura_info['cfdi:Emisor']['@nombre'],
-    tipo_comprobante=factura_info.get('@tipoDeComprobante') or factura_info['@TipoDeComprobante'],
-    subtotal=float(factura_info.get('@subTotal') or factura_info['@SubTotal']),
-    total=float(factura_info.get('@total') or factura_info['@Total']),
+    fecha=parser.parse(factura_info.get('@fecha') or factura_info['@fecha']),
+    receptor_rfc=factura_info['cfdi:receptor']['@rfc'],
+    receptor_nombre=factura_info['cfdi:receptor']['@nombre'],
+    emisor_rfc=factura_info['cfdi:emisor']['@rfc'],
+    emisor_nombre=factura_info['cfdi:emisor']['@nombre'],
+    tipo_comprobante=factura_info.get('@tipodecomprobante') or factura_info['@tipodecomprobante'],
+    subtotal=float(factura_info.get('@subtotal') or factura_info['@subtotal']),
+    total=float(factura_info.get('@total') or factura_info['@total']),
     isr_retenido=isr_retenido,
     iva_retenido=iva_retenido,
     isr_trasladado=isr_trasladado,

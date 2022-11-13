@@ -25,7 +25,7 @@ class MySQLConceptosRepository(AbstractConceptosRepository):
                                    connect_timeout=5)
         except pymysql.MySQLError as e:
             self.__logger.error("ERROR: Unexpected error: Could not connect to MySQL instance.")
-            self.__logger.error(e)
+            raise(e)
         return conn
     
     def __execute_query(self, query):
