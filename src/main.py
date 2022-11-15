@@ -8,6 +8,7 @@ from dateutil.relativedelta import relativedelta
 from src.adapters.concepto_repository import MySQLConceptosRepository
 from src.adapters.facturas_repository import MySQLFacturasRepository
 from src.adapters.no_financiero_repository import MySQLNoFinancieroRepository
+from src.adapters.nominas_repository import MySQLNominasRepository
 from src.domain.factura import Deducible
 from src.settings import localconfig
 import pandas as pd
@@ -69,8 +70,9 @@ def generate_iva_mensual_report(facturas: List, revenue_no_financiero):
     print(f"Impuesto a cargo: {my_total_trasladado-my_total_acreditable-iva_retenido}")
 
 
-def generate_isr_mensual_report(facturas: List):
+def generate_isr_mensual_report(facturas: List, nominas, revenue_no_financiero):
     """ Generate isr report"""
+    pudb.set_trace()
     print(len(facturas))
 
 def generate_doit_mensual_report(facturas: List):
@@ -100,11 +102,14 @@ if __name__ == "__main__":
         until_date = since_date + relativedelta(years=1)
     
     facturas_repo = MySQLFacturasRepository(logging.getLogger(), localconfig)
-    
     # bring all facturas of the month with the concept
     facturas = facturas_repo.filter(rfc=args.rfc, since_date=since_date.date(), until_date=until_date.date())
     # facturas = facturas_repo.filter(rfc=args.rfc)
     facturas_repo.close_connection()
+
+    nomina_repo = MySQLNominasRepository(logging.getLogger(), localconfig)
+    nominas = nomina_repo.filter(rfc=args.rfc, since_date=since_date.date(), until_date=until_date.date())
+    nomina_repo.close_connection()
     # Ensure all facturas are clasified between deducible and not deducible
     facturas = classify_facturas_deducibles(facturas)
 
@@ -114,7 +119,7 @@ if __name__ == "__main__":
         revenue_no_financiero = no_financiero_repo.filter(since_date=since_date.date(), until_date=until_date.date())
         no_financiero_repo.close_connection()
         generate_iva_mensual_report(facturas, revenue_no_financiero=revenue_no_financiero)
-        generate_isr_mensual_report(facturas)
+        generate_isr_mensual_report(facturas, nominas, revenue_no_financiero=revenue_no_financiero)
         generate_doit_mensual_report(facturas)
     else:
         generate_isr_anual_report(facturas)
