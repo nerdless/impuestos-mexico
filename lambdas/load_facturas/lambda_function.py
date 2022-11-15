@@ -119,7 +119,7 @@ def get_nomina(factura_info, filekey):
                   receptor=factura_info['cfdi:receptor']['@rfc'], emisor=factura_info['cfdi:emisor']['@rfc'],
                   percepciones=float(factura_info['cfdi:complemento']['nomina12:nomina']['@totalpercepciones']),
                   deducciones=float(factura_info['cfdi:complemento']['nomina12:nomina']['@totaldeducciones']),
-                  otros_pagos=float(factura_info['cfdi:complemento']['nomina12:nomina']['@totalotrospagos']),
+                  otros_pagos=float(factura_info['cfdi:complemento']['nomina12:nomina'].get('@totalotrospagos', 0)),
                   total_gravado=float(factura_info['cfdi:complemento']['nomina12:nomina']['nomina12:percepciones']['@totalgravado']),
                   total_retenido=float(factura_info['cfdi:complemento']['nomina12:nomina']['nomina12:deducciones']['@totalimpuestosretenidos']),
                   isr_retenido=float(factura_info['cfdi:complemento']['nomina12:nomina']['nomina12:deducciones']['@totalimpuestosretenidos']),
