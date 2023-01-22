@@ -9,12 +9,37 @@ from src.adapters.concepto_repository import MySQLConceptosRepository
 from src.adapters.facturas_repository import MySQLFacturasRepository
 from src.adapters.no_financiero_repository import MySQLNoFinancieroRepository
 from src.adapters.nominas_repository import MySQLNominasRepository
+from src.adapters.isr_repository import MySQLISRsRepository
 from src.domain.factura import Deducible
 from src.settings import localconfig
 import pandas as pd
 import pudb
+import requests
+import io
 
 my_rfc = os.environ['RFC']
+
+
+def truncate(f, n):
+    '''Truncates/pads a float f to n decimal places without rounding'''
+    s = '{}'.format(f)
+    if 'e' in s or 'E' in s:
+        return '{0:.{1}f}'.format(f, n)
+    i, p, d = s.partition('.')
+    return '.'.join([i, (d+'0'*n)[:n]])
+
+def get_inflacion(date):
+    post_infla = {'formatoCSV.x': '44',
+              'series': 'SP1',
+              'version': '2'}
+    url = 'http://www.banxico.org.mx/SieInternet/consultarDirectorioInternetAction.do?accion=consultarSeries'
+    inflacion_cont = '\n'.join(str(requests.post(url, data=post_infla).content).split('\\r\\n')[12:])
+    inflacion_data = pd.read_csv(io.StringIO(inflacion_cont), names=['fecha', 'inflacion'], na_values='N/E', skiprows=1)
+    inflacion_data.dropna(inplace=True)
+    inflacion_data['fecha'] = inflacion_data.fecha.map(lambda x: datetime.strptime(x, '%d/%m/%Y'))
+    inflacion_data.set_index('fecha', inplace=True)
+    inflacion_data['inflacion'] = inflacion_data.inflacion.astype(float)
+    return inflacion_data.loc[date.replace(day=1)].iloc[0]
 
 def classify_facturas_deducibles(facturas: List):
     """ Classify facturas as deducibles."""
@@ -37,12 +62,11 @@ def classify_facturas_deducibles(facturas: List):
     return facturas_deducibles
 
 
-def generate_iva_mensual_report(facturas: List, revenue_no_financiero):
+def generate_iva_mensual_report(facturas: List, no_finan_df):
     """ Generate iva report"""
     print(len(facturas))
     data = pd.DataFrame([fact.dict() for fact in facturas])
     my_revenue = data.loc[(data.emisor_rfc == my_rfc)&(data.tipo_comprobante.isin(['I', 'ingreso']))]
-    no_finan_df = pd.DataFrame(revenue_no_financiero)
     factura_publico = int(input("Facturaste no financiero este mes?: "))
     if not bool(factura_publico):
         my_total_revenue = my_revenue.subtotal.sum() + no_finan_df.interes.sum()
@@ -62,17 +86,58 @@ def generate_iva_mensual_report(facturas: List, revenue_no_financiero):
     else:
         my_total_acreditable = iva_acreditable
     
-    print(f"Actividades grabadas al 16%: {my_total_revenue}")
-    print(f"IVA cobrado del periodo: {my_total_trasladado}")
-    print(f"IVA acreditable: {my_total_acreditable}")
+    print(f"Actividades grabadas al 16%: {round(my_total_revenue,0)}")
+    print(f"IVA cobrado del periodo: {round(my_total_trasladado,0)}")
+    print(f"IVA acreditable: {round(my_total_acreditable,0)}")
     iva_retenido = my_revenue.iva_retenido.sum()
-    print(f"IVA retenido: {iva_retenido}")
+    print(f"IVA retenido: {round(iva_retenido,0)}")
     print(f"Impuesto a cargo: {my_total_trasladado-my_total_acreditable-iva_retenido}")
-
-
-def generate_isr_mensual_report(facturas: List, nominas, revenue_no_financiero):
-    """ Generate isr report"""
     pudb.set_trace()
+
+def generate_isr_semestral_report(since_date, until_date, revenue_no_finaciero, isr_info):
+    no_finan_df = pd.DataFrame(revenue_no_financiero)
+    no_finan_df['total'] = no_finan_df.abono + no_finan_df.interes - no_finan_df.comision - no_finan_df.recuperacion - no_finan_df.capital
+    factor_inflacion = float(truncate((get_inflacion(until_date)/get_inflacion(since_date)) - 1, 4))
+    print(f"Factor de inflacion: {factor_inflacion}")
+    intereses_reales = []
+    intereses_nominales = []
+    ajustes_inflacion = []
+    isr_retenido = []
+    for institucion_id in no_finan_df.institucion_id.unique():
+        saldo_diario = no_finan_df.loc[no_finan_df.institucion_id == institucion_id].set_index('fecha').resample('D').sum()
+        saldo_diario['saldo'] = saldo_diario.total.cumsum()
+        saldo_diario = saldo_diario.loc[saldo_diario.index >= since_date]
+        saldo_promedio = saldo_diario.saldo.mean()
+        interes_nominal = saldo_diario.interes.sum()
+        print(f"interes nominal: {interes_nominal}")
+        ajuste = saldo_promedio * factor_inflacion
+        print(f"ajuste inflacion: {ajuste}")
+        interes_real = interes_nominal - ajuste
+        print(f"interes real: {interes_real}")
+        intereses_reales.append(interes_real)
+        intereses_nominales.append(interes_nominal)
+        ajustes_inflacion.append(ajuste)
+    print(f"Ingresos percibidos: {sum(intereses_nominales)}")
+    print(f"Deducciones autorizadas: {sum(ajustes_inflacion)}")
+    print(f"Base gravable: {sum(intereses_reales)}")
+    isr_level = isr_info.loc[(isr_info.limite_inferior <= interes_real)&(isr_info.limite_superior >= interes_real)].iloc[0]
+    isr_tarifa = isr_level.cuota + (intereses_reales - isr_level.limite_inferior) * (isr_level.tasa/100)
+    print(f"Impuesto conforme a tarifa: {isr_tarifa}")
+    print("Como declarar https://youtu.be/wjatcerwrtw?t=250")
+    
+
+
+def generate_isr_mensual_report(facturas: List, revenue_no_financiero):
+    """ Generate isr report"""
+    print("\n Ingresos del sistema no financiero.\n")
+    to_delete_index = list(map(int, input("Select the indexes of facturas the are not deducibles in this month: ").split(',')))
+    facturas_this_month = [factur for factur in facturas if facturas.index(factur) not in to_delete_index]
+    facturas_df = pd.DataFrame([fact.dict() for fact in facturas_this_month])
+    no_financiero_df = pd.DataFrame(revenue_no_financiero)
+    print(f"Ingresos percibidos: {no_financiero_df.interes.sum()}")
+    deduccines = 0
+    utilidad = no_financiero_df.interes.sum() - deducciones
+    print(f"Deducciones autorizadas: {deducciones}")
     print(len(facturas))
 
 def generate_doit_mensual_report(facturas: List):
@@ -88,15 +153,19 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Ayuda para hacer una declaracion.')
     parser.add_argument('rfc', help="RFC de la entidad que declara", type=str)
     parser.add_argument('anio', help="Anio de la declaracion", type=int)
-    parser.add_argument('--mes', help='mes de la declaracion', type=int)
+    parser.add_argument('--type', help='tipo de declaracion', type=str)
+    parser.add_argument('--periodo', help='periodo a declarar', type=int)
 
     args = parser.parse_args()
-    declaration_type = 'mensual' if args.mes else 'anual'
+    declaration_type = args.type
 
     print(f"declaracion {declaration_type} for {args.rfc}")
     if declaration_type == 'mensual':
-        since_date = datetime(args.anio, args.mes, 1)
+        since_date = datetime(args.anio, args.periodo, 1)
         until_date = since_date + relativedelta(months=1)
+    elif declaration_type == 'semestral':
+        since_date = datetime(args.anio, 1, 1)
+        until_date = datetime(args.anio, args.periodo * 6, 1)
     else:
         since_date = datetime(args.anio, 1, 1)
         until_date = since_date + relativedelta(years=1)
@@ -112,16 +181,23 @@ if __name__ == "__main__":
     nomina_repo.close_connection()
     # Ensure all facturas are clasified between deducible and not deducible
     facturas = classify_facturas_deducibles(facturas)
+    no_financiero_repo = MySQLNoFinancieroRepository(logging.getLogger(), localconfig)
+    revenue_no_financiero = no_financiero_repo.filter(until_date=until_date.date())
+    no_financiero_repo.close_connection()
+    isr_repo = MySQLISRsRepository(logging.getLogger(), localconfig)
+    isr_info = isr_repo.filter(until_date.year, declaration_type, args.periodo)
+    isr_repo.close_connection()
 
     if declaration_type == 'mensual':
-        revenue_no_financiero = None
-        no_financiero_repo = MySQLNoFinancieroRepository(logging.getLogger(), localconfig)
-        revenue_no_financiero = no_financiero_repo.filter(since_date=since_date.date(), until_date=until_date.date())
-        no_financiero_repo.close_connection()
-        generate_iva_mensual_report(facturas, revenue_no_financiero=revenue_no_financiero)
-        generate_isr_mensual_report(facturas, nominas, revenue_no_financiero=revenue_no_financiero)
+        no_finan_df = pd.DataFrame(revenue_no_financiero)
+        no_finan_df = no_finan_df.loc[no_finan_df.fecha >= since_date]
+        generate_iva_mensual_report(facturas, no_finan_df=no_finan_df)
+        # generate_isr_mensual_report(facturas, revenue_no_financiero=revenue_no_financiero)
         generate_doit_mensual_report(facturas)
+    elif declaration_type == 'semestral':
+        generate_isr_semestral_report(since_date=since_date, until_date=until_date, revenue_no_finaciero=revenue_no_financiero, isr_info=isr_info)
     else:
         generate_isr_anual_report(facturas)
 
 
+# TODO: Separar arrendamiento, servicios profesionales, IVA y demas ingresos
