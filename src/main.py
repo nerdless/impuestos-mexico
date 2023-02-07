@@ -16,6 +16,7 @@ import pandas as pd
 import pudb
 import requests
 import io
+from statistics import mode
 
 my_rfc = os.environ['RFC']
 
@@ -53,18 +54,31 @@ def classify_facturas_deducibles(facturas: List):
                 # ask for a classifycation
                 print(concepto)
                 concepto.deducible = bool(int(input('Is that concepto deducible?: ')))
+                concepto.regimen_id = int(int(input('Provide the regimen id o this concept: ')))
                 # add deducible
                 concepto_repo.add(Deducible(**concepto.dict()))
             deducible &= concepto.deducible
         if deducible:
+            factura.deducible = True
+            factura.regimen_id = mode([concepto.regimen_id or concepto in factura.conceptos])
             facturas_deducibles.append(factura)
     concepto_repo.close_connection()
     return facturas_deducibles
 
+def generate_isr_servicios_report(facturas: List):
+    print("#### ISR persona fisica report ########")
+    data = pd.DataFrame([fact.dict() for fact in facturas])
+    acreditable = data.loc[(data.emisor_rfc != my_rfc)&(data.tipo_comprobante.isin(['I', 'ingreso']))&(data.regimen_id == 1)]
+    gastos =  acreditable.subtotal.sum()
+    print(f"Total gastos: {gastos}")
+    ingresos_facts = data.loc[(data.emisor_rfc == my_rfc)&(data.tipo_comprobante.isin(['I', 'ingreso']))&(data.regimen_id == 1)]
+    ingresos =  ingresos_facts.subtotal.sum()
+    print(f"Ingresos: {ingresos}")
+    pudb.set_trace()
 
 def generate_iva_mensual_report(facturas: List, no_finan_df):
-    """ Generate iva report"""
-    print(len(facturas))
+    """ Generate IVA report"""
+    print("#### IVA report ########")
     data = pd.DataFrame([fact.dict() for fact in facturas])
     my_revenue = data.loc[(data.emisor_rfc == my_rfc)&(data.tipo_comprobante.isin(['I', 'ingreso']))]
     factura_publico = int(input("Facturaste no financiero este mes?: "))
@@ -92,13 +106,15 @@ def generate_iva_mensual_report(facturas: List, no_finan_df):
     iva_retenido = my_revenue.iva_retenido.sum()
     print(f"IVA retenido: {round(iva_retenido,0)}")
     print(f"Impuesto a cargo: {my_total_trasladado-my_total_acreditable-iva_retenido}")
-    pudb.set_trace()
+    #pudb.set_trace()
 
-def generate_isr_semestral_report(since_date, until_date, revenue_no_finaciero, isr_info):
+def generate_isr_semestral_report(since_date, until_date, revenue_no_financiero, isr_info):
     no_finan_df = pd.DataFrame(revenue_no_financiero)
     no_finan_df['total'] = no_finan_df.abono + no_finan_df.interes - no_finan_df.comision - no_finan_df.recuperacion - no_finan_df.capital
-    factor_inflacion = float(truncate((get_inflacion(until_date)/get_inflacion(since_date)) - 1, 4))
-    print(f"Factor de inflacion: {factor_inflacion}")
+    inflacion_inicial = get_inflacion(since_date)
+    inflacion_final = get_inflacion(until_date)
+    factor_inflacion = float(truncate((inflacion_final/inflacion_inicial) - 1, 4))
+    print(f"Factor de inflacion: {factor_inflacion}, inicial: {inflacion_inicial}, final: {inflacion_final}")
     intereses_reales = []
     intereses_nominales = []
     ajustes_inflacion = []
@@ -110,6 +126,7 @@ def generate_isr_semestral_report(since_date, until_date, revenue_no_finaciero, 
         saldo_promedio = saldo_diario.saldo.mean()
         interes_nominal = saldo_diario.interes.sum()
         print(f"interes nominal: {interes_nominal}")
+        print(f"Saldo promedio {saldo_promedio}")
         ajuste = saldo_promedio * factor_inflacion
         print(f"ajuste inflacion: {ajuste}")
         interes_real = interes_nominal - ajuste
@@ -123,6 +140,7 @@ def generate_isr_semestral_report(since_date, until_date, revenue_no_finaciero, 
     isr_level = isr_info.loc[(isr_info.limite_inferior <= interes_real)&(isr_info.limite_superior >= interes_real)].iloc[0]
     isr_tarifa = isr_level.cuota + (intereses_reales - isr_level.limite_inferior) * (isr_level.tasa/100)
     print(f"Impuesto conforme a tarifa: {isr_tarifa}")
+    print(isr_info)
     print("Como declarar https://youtu.be/wjatcerwrtw?t=250")
     
 
@@ -144,8 +162,21 @@ def generate_doit_mensual_report(facturas: List):
     """ Generate doit report"""
     print(len(facturas))
 
-def generate_isr_anual_report(facturas: List):
+def generate_isr_anual_report(facturas: List, nominas: List, nofinanciero):
     """ Generate isr report"""
+    print('################Sueldos, salarios y asimilados ##################')
+    data = pd.DataFrame([nom.dict() for nom in nominas])
+    ingreso_anual = data.groupby('emisor').percepciones.sum()
+    ingreso_exento = ingreso_anual - data.groupby('emisor').total_gravado.sum()
+    ingreso_exento.name = 'ingreso_exento'
+    retenciones_isr = data.groupby('emisor').isr_retenido.sum()
+    ingresos_table = pd.DataFrame([ingreso_anual, ingreso_exento, retenciones_isr]).T
+    print(ingresos_table)
+    print('#################Gastos Authorizados############################')
+    print('##################Otros ingresos###############')
+    no_finan_df = pd.DataFrame(nofinanciero)
+    no_finan_df['total'] = no_finan_df.abono + no_finan_df.interes - no_finan_df.comision - no_finan_df.recuperacion - no_finan_df.capital
+    pudb.set_trace()
     print(len(facturas))
 
 
@@ -164,7 +195,7 @@ if __name__ == "__main__":
         since_date = datetime(args.anio, args.periodo, 1)
         until_date = since_date + relativedelta(months=1)
     elif declaration_type == 'semestral':
-        since_date = datetime(args.anio, 1, 1)
+        since_date = datetime(args.anio, max((args.periodo - 1) * 6, 1), 1)
         until_date = datetime(args.anio, args.periodo * 6, 1)
     else:
         since_date = datetime(args.anio, 1, 1)
@@ -192,12 +223,13 @@ if __name__ == "__main__":
         no_finan_df = pd.DataFrame(revenue_no_financiero)
         no_finan_df = no_finan_df.loc[no_finan_df.fecha >= since_date]
         generate_iva_mensual_report(facturas, no_finan_df=no_finan_df)
+        generate_isr_servicios_report(facturas)
         # generate_isr_mensual_report(facturas, revenue_no_financiero=revenue_no_financiero)
         generate_doit_mensual_report(facturas)
     elif declaration_type == 'semestral':
-        generate_isr_semestral_report(since_date=since_date, until_date=until_date, revenue_no_finaciero=revenue_no_financiero, isr_info=isr_info)
+        generate_isr_semestral_report(since_date=since_date, until_date=until_date, revenue_no_financiero=revenue_no_financiero, isr_info=isr_info)
     else:
-        generate_isr_anual_report(facturas)
+        generate_isr_anual_report(facturas, nominas, revenue_no_financiero)
 
 
 # TODO: Separar arrendamiento, servicios profesionales, IVA y demas ingresos

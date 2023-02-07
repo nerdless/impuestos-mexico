@@ -49,7 +49,7 @@ class MySQLConceptosRepository(AbstractConceptosRepository):
 
     def add(self, item: Concepto) -> Optional[Concepto]:
         """Create/update concepto."""
-        query = f"UPDATE deducible SET deducible = {int(item.deducible)} WHERE emisor_rfc = '{item.emisor_rfc}' AND receptor_rfc = '{item.receptor_rfc}' AND descripcion = '{item.descripcion}'"
+        query = f"UPDATE deducible SET deducible = {int(item.deducible)}, regimen_id = {int(item.regimen_id)} WHERE emisor_rfc = '{item.emisor_rfc}' AND receptor_rfc = '{item.receptor_rfc}' AND descripcion = '{item.descripcion}'"
         self.__execute_query(query)
-        query = f"UPDATE conceptos SET deducible = {int(item.deducible)} WHERE emisor_rfc = '{item.emisor_rfc}' AND receptor_rfc = '{item.receptor_rfc}' AND descripcion = '{item.descripcion}'"
+        query = f"UPDATE conceptos SET deducible = {int(item.deducible)}, regimen_id = {int(item.regimen_id)} WHERE emisor_rfc = '{item.emisor_rfc}' AND receptor_rfc = '{item.receptor_rfc}' AND descripcion = '{item.descripcion}'"
         self.__execute_query(query)

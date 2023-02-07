@@ -66,7 +66,7 @@ class MySQLISRsRepository(AbstractISRsRepository):
         final_table = pd.DataFrame(isr_db)
         if tipo == 'anual':
             periodos_finales = 12
-        if tipo == 'semestral':
+        elif tipo == 'semestral':
             periodos_finales = 6 * periodo
         else:
             periodos_finales = periodo

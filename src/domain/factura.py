@@ -9,6 +9,7 @@ class Deducible(BaseModel):
     receptor_rfc: str
     descripcion: Optional[str]
     deducible: Optional[bool]
+    regimen_id: Optional[int]
 
 class Concepto(Deducible):
     """Concepto model."""
@@ -34,3 +35,4 @@ class Factura(BaseModel):
     isr_trasladado: float
     conceptos: List[Concepto]
     deducible: Optional[bool]
+    regimen_id: Optional[int]
