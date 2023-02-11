@@ -1,6 +1,7 @@
 """Authors repository for Mongo."""
 from datetime import date
-from domain.factura import Concepto, Factura
+from src.domain.factura import Factura
+from src.domain.no_financiero import DayStatus
 from typing import Any, Dict, List, Optional, TypedDict, cast
 import pymysql
 import logging
@@ -52,7 +53,7 @@ class MySQLNoFinancieroRepository(AbstractNoFinancieroRepository):
 
     def filter(
         self,
-        institucion_ids: Optional[List[Factura]] = None,
+        institucion_ids: Optional[List[str]] = None,
         since_date: Optional[date] = None,
         until_date: Optional[date] = None
     ) -> List[Dict]:
@@ -64,7 +65,7 @@ class MySQLNoFinancieroRepository(AbstractNoFinancieroRepository):
                 query += " WHERE "
             else:
                 query += " AND "
-            query += f"""factura_id in ('{"','".join(factura_ids)}')"""
+            query += f"""institucion_id in ('{"','".join(institucion_ids)}')"""
             conditions += 1
         if since_date:
             if conditions == 0:
@@ -80,13 +81,17 @@ class MySQLNoFinancieroRepository(AbstractNoFinancieroRepository):
                 query += " AND "
             query += f"""fecha <= '{until_date.isoformat()}'"""
             conditions += 1
+        query += " ORDER BY fecha ASC"
         no_financiero = self.__execute_query(query)
         return no_financiero
     
-    def add(self, item: Factura) -> Optional[Factura]:
-        """Create/update factura."""
-        raise NotImplementedError
+    def add(self, item: DayStatus) -> Optional[DayStatus]:
+        """Create/update Day status."""
+        query = "Insert ignore into diario_no_financiero (fecha, institucion_id, abono, comision, iva_comision, interes, iva_interes, recuperacion, capital) values "
+        query += f"('{item.fecha}',  '{item.institucion_id}', '{item.abono}', '{item.comision}', '{item.iva_comision}', '{item.interes}', '{item.iva_interes}', '{item.recuperacion}', '{item.capital}')"
+        self.__execute_query(query)
+        
 
-    def delete(self, item: Factura) -> None:
+    def delete(self, item: DayStatus) -> None:
         """Delete factura."""
         raise NotImplementedError

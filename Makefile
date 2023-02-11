@@ -9,3 +9,10 @@ bash:
 
 ipython:
 	docker run --rm -it -v $(shell pwd):/usr/src/app --env-file=.env impuestos ipython
+
+install-crawler-env:
+	pip install -r crawlers/requirements.txt
+
+crawl:
+	export $(cat .env | xargs)
+	ipython
