@@ -42,7 +42,7 @@ def parse_movimientos(response):
 
 class AfluentaCrawler:
     institucion_id = "afluenta"
-    init_date = datetime(2019,4,10)
+    init_date = datetime(2019,4,12)
     def __init__(self) -> None:
         self.webdriver = Firefox()
         self.webdriver.get("https://www.afluenta.mx/mi_afluenta/ingresar")
@@ -52,11 +52,13 @@ class AfluentaCrawler:
     def crawl_saldo(self, start_date: datetime, final_date: datetime) -> pd.DataFrame:
         previous_data = start_date - relativedelta(day=1)
         url = f"https://www.afluenta.mx/data_table_call/_DT_LenderTaxReporting/filteryear-{previous_data.year}__filtermonth-{previous_data.month}__format-xls/dt/LenderTaxReporting"
+        print("Getting ", url)
         response = self.webdriver.request("GET", url)
         daily_data = response_to_daily_saldo(response)
         while daily_data.fecha.max() < datetime(final_date.year, final_date.month, final_date.day):
-            init_date = daily_data.fecha.max() + relativedelta(days=1)
+            init_date = datetime(daily_data.fecha.max().year, daily_data.fecha.max().month, 1) + relativedelta(months=1)
             url = f"https://www.afluenta.mx/data_table_call/_DT_LenderTaxReporting/filteryear-{init_date.year}__filtermonth-{init_date.month}__format-xls/dt/LenderTaxReporting"
+            print("Getting ", url)
             response = self.webdriver.request("GET", url)
             new_data = response_to_daily_saldo(response)
             daily_data = pd.concat([daily_data, new_data])
