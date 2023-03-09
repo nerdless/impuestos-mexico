@@ -24,3 +24,14 @@ Afluenta te proporcional cada mes un excel con los intereses he iva, pero no te 
 - `iva_interes`: Es el `interes` multiplicado por 0.16.
 - `recuperacion`: Para esta fuente es siempre cero.
 - `capital`: Capital amortizado.  Diferencia negativa entre el saldo capital del dia contra el dia anterior
+
+### Doopla
+Los datos de doopla son tomados directamente de su API y transformados de la siguiente manera
+- `institucion_id`: `doopla`
+- `abono`: Es la suma de los montos donde el status es "Inversión".
+- `comision`: Es el monto donde `deposit_reason` es `Comision` divido entre 1.16. 
+- `iva_comision`: Es `comision` por 0.16.
+- `interes`: Es la suma de la columna intereses
+- `iva_interes`: Es el `interes` multiplicado por 0.16.
+- `recuperacion`: Para esta fuente es siempre cero.
+- `capital`: Capital amortizado.  Es la suma de la columna capital

@@ -19,32 +19,29 @@ import time
 import os
 import random
 
-def response_to_daily_saldo(response):
-    data = pd.read_excel(response.content, engine="custom_xlrd")
-    data["saldo"] = data["Saldo de capital"].map(lambda x: float(x.replace(",", "").split(" ")[1]))
-    data["recuperacion"] = 0
-    data["fecha"] = pd.to_datetime(data["Fecha"], dayfirst=True)
-    return data
 
-def parse_movimientos(response):
-    json_response = json.loads(response.text)
-    data = pd.DataFrame()
-    data["fecha"] = pd.to_datetime(data["Fecha"], dayfirst=True)
-    data["total_comision"] = data["Débitos"].map(lambda x: float(x.replace(",","").split(" ")[1] if x != "-" else 0))
-    data["total_interes"] = data["Créditos"].map(lambda x: float(x.replace(",","").split(" ")[1] if x != "-" else 0))
-    comisiones_ops = ["Cargo por gestión de cuotas en mora", "Comisión de mantenimiento de cuenta", "Adhesión al fideicomiso: Comisión por inscipción"]
-    cuotas = data.loc[data.Operación.map(lambda x: "Retorno por cuota" in x)]
-    comisiones = data.loc[data.Operación.isin(comisiones_ops)]
-    data = pd.concat([cuotas, comisiones])
-    data["interes"] = data["total_interes"] / 1.16
-    data["comision"] = data["total_comision"] / 1.16
+
+def parse_movimientos(data):
+    data = data.drop_duplicates("id")
+    data["monto"] = data.monto.astype(float)
+    abonos = data.loc[data.status == 'Inversión']
+    comisiones = data.loc[data.deposit_reason == 'Comision']
+    pagos = data.loc[~data.id.isin(abonos.id.tolist() + comisiones.id.tolist())]
+    abonos["abono"] = abonos.monto
+    comisiones["total_comision"] = comisiones.monto
+
+    data = pd.concat([abonos, comisiones, pagos])
+    data["recuperacion"] = 0
+    data['fecha'] = pd.to_datetime(data['u_catch_date'],unit='s')
+    data["interes"] = data["intereses"].astype(float)
     data["iva_interes"] = data["interes"] * 0.16
+    data["capital"] = data["capital"].astype(float)
+    data["comision"] = data["total_comision"] / 1.16
     data["iva_comision"] = data["comision"] * 0.16
-    return data[["fecha", "interes", "iva_interes", "comision", "iva_comision"]]
+    return data[["fecha", "interes", "iva_interes", "comision", "iva_comision", "abono", "capital", "recuperacion"]]
 
 def random_typing_time(mean_time=0.27, range=0.05):
     return mean_time + (random.random()*range) - range/2
-
 
 
 
@@ -87,59 +84,46 @@ class DooplaCrawler:
 
 
     
-    def crawl_saldo(self, start_date: datetime, final_date: datetime) -> pd.DataFrame:
-        previous_data = start_date - relativedelta(day=1)
-        url = f"https://www.afluenta.mx/data_table_call/_DT_LenderTaxReporting/filteryear-{previous_data.year}__filtermonth-{previous_data.month}__format-xls/dt/LenderTaxReporting"
-        print("Getting ", url)
-        response = self.webdriver.request("GET", url)
-        daily_data = response_to_daily_saldo(response)
-        while daily_data.fecha.max() < datetime(final_date.year, final_date.month, final_date.day):
-            init_date = datetime(daily_data.fecha.max().year, daily_data.fecha.max().month, 1) + relativedelta(months=1)
-            url = f"https://www.afluenta.mx/data_table_call/_DT_LenderTaxReporting/filteryear-{init_date.year}__filtermonth-{init_date.month}__format-xls/dt/LenderTaxReporting"
-            print("Getting ", url)
-            response = self.webdriver.request("GET", url)
-            new_data = response_to_daily_saldo(response)
-            daily_data = pd.concat([daily_data, new_data])
-        daily_data["saldo_lagged"] = daily_data["saldo"].shift(1)
-        daily_data["saldo_diff"] = daily_data["saldo"] - daily_data["saldo_lagged"]
-        daily_data["abono"] = daily_data["saldo_diff"].map(lambda x: x if x > 0 else 0)
-        daily_data["capital"] = daily_data["saldo_diff"].map(lambda x: abs(x) if x <= 0 else 0)
-        daily_data = daily_data[["fecha", "abono", "capital", "recuperacion"]]
-        return daily_data.loc[(daily_data.fecha >= start_date)&(daily_data.fecha <= final_date)]
-    
     def crawl_movimientos(self, start_date: datetime, end_date: datetime) -> pd.DataFrame:
         # print(f"Getting page {page}")
         url = "https://doopla.mx/api/investor/movimientos"
         payload = self.payload.copy()
         payload["data[first_date]"] = (start_date - relativedelta(days=1)).date().isoformat()
         payload["data[last_date]"] = end_date.date().isoformat()
+        payload["type"] = "filter"
         response = request("POST", url, data=payload, headers=self.headers)
         json_response = json.loads(response.text)
         data = pd.DataFrame(json_response["movimientos"])
-        min_id = int(data.id.min())
-        id_delta = int(data.id.max()) - min_id
-        print(min_id, id_delta)
+        min_id = data.id.astype(int).min()
+        max_id = data.id.astype(int).max()
+        print(min_id, data.catch_date.min(),  data.catch_date.max())
         while int(data.u_catch_date.min()) > datetime.timestamp(start_date):
-            payload["data[start]"] = str(min_id - id_delta)
-            payload["data[end]"] = str(min_id)
+            payload["data[start]"] = str(min_id)
+            payload["data[end]"] = str(max_id)
             payload["type"] = "scroll"
             print("Getting new data", payload)
             response = request("POST", url, data=payload, headers=self.headers)
             json_response = json.loads(response.text)
             if json_response["m"] == 'No hay movimientos que mostrar':
+                print("No hay movimientos que mostrar")
                 break
             new_data = pd.DataFrame(json_response["movimientos"])
-            min_id = int(new_data.id.min())
-            id_delta = int(new_data.id.max()) - min_id
-            print(min_id, id_delta)
+            min_id = new_data.id.astype(int).min()
+            max_id = new_data.id.astype(int).max()
+            print(min_id, data.catch_date.min(),  data.catch_date.max())
             data = pd.concat([data, new_data])
         return data
 
 
     def __crawl_impuestos(self, start_date: datetime, final_date: datetime) -> pd.DataFrame:
-        saldo_df = self.crawl_saldo(start_date, final_date)
-        movimientos = self.crawl_movimientos(start_date=start_date)
-        daily_data = saldo_df.merge(movimientos, on="fecha")
+        movimientos = pd.DataFrame()
+        date_range = pd.date_range(start_date, final_date, freq='M')
+        date_range = [start_date] + list(date_range) + [final_date]
+        for cursor in range(1, len(date_range)):
+            new_movimientos = self.crawl_movimientos(start_date=date_range[cursor-1], end_date=date_range[cursor])
+            movimientos = pd.concat([movimientos, new_movimientos])
+        daily_data = parse_movimientos(movimientos)
+        daily_data = daily_data.set_index("fecha").resample('D').sum().reset_index()
         return daily_data.loc[(daily_data.fecha >= start_date)&(daily_data.fecha <= final_date)]
 
     def crawl(self, start_date: Optional[datetime] = None, end_date: Optional[datetime] = None, save_data=True):
