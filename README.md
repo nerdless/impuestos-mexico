@@ -35,3 +35,14 @@ Los datos de doopla son tomados directamente de su API y transformados de la sig
 - `iva_interes`: Es el `interes` multiplicado por 0.16.
 - `recuperacion`: Para esta fuente es siempre cero.
 - `capital`: Capital amortizado.  Es la suma de la columna capital
+
+### Yotepresto
+Los datos de yotepresto son tomados directamente de su API y transformados de la siguiente manera
+- `institucion_id`: `yotepresto`
+- `abono`: Es la suma de los montos donde el tipo es "Préstamo" multilicado por -1.
+- `comision`: Es el monto donde `tipo` es `Comisión` divido entre 1.16. 
+- `iva_comision`: Es `comision` por 0.16.
+- `interes`: Es la suma de la columna intereses y la columna moratorios donde tipo es pago
+- `iva_interes`: Es el `interes` multiplicado por 0.16.
+- `recuperacion`: Para esta fuente es siempre cero.
+- `capital`: Capital amortizado.  Es la suma de la columna capital donde tipo es pago

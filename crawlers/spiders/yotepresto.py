@@ -22,18 +22,17 @@ import random
 
 
 def parse_movimientos(data):
-    data = data.drop_duplicates("id")
     data["monto"] = data.monto.astype(float)
-    abonos = data.loc[data.status == 'Inversión']
-    comisiones = data.loc[data.deposit_reason == 'Comision']
-    pagos = data.loc[~data.id.isin(abonos.id.tolist() + comisiones.id.tolist())]
-    abonos["abono"] = abonos.monto
-    comisiones["total_comision"] = comisiones.monto
+    abonos = data.loc[data.tipo == 'Préstamo'].drop(["capital", "intereses"], 1)
+    comisiones = data.loc[data.tipo == 'Comisión'].drop(["capital", "intereses"], 1)
+    pagos = data.loc[data.tipo == 'Pago']
+    abonos["abono"] = -1 * abonos.monto
+    comisiones["total_comision"] = -1 * comisiones.monto
+    pagos["interes"] = pagos["intereses"].astype(float) + pagos["moratorios"].astype(float)
+    pagos["iva_interes"] = pagos["interes"] * 0.16
 
     data = pd.concat([abonos, comisiones, pagos])
     data["recuperacion"] = 0
-    data['fecha'] = pd.to_datetime(data['u_catch_date'],unit='s')
-    data["interes"] = data["intereses"].astype(float)
     data["iva_interes"] = data["interes"] * 0.16
     data["capital"] = data["capital"].astype(float)
     data["comision"] = data["total_comision"] / 1.16
