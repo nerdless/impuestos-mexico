@@ -45,7 +45,7 @@ def random_typing_time(mean_time=0.27, range=0.05):
 
 
 class YoteprestoCrawler:
-    institucion_id = "yorepresto"
+    institucion_id = "yotepresto"
     init_date = datetime(2019,4,12)
 
 
