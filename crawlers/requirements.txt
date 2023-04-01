@@ -5,3 +5,5 @@ selenium-wire==5.1.0
 ipython==8.1.1
 pydantic==1.10.2
 PyMySQL==1.0.2
+selenium==3.7
+selenium-requests==1.3
