@@ -94,11 +94,9 @@ def generate_iva_mensual_report(facturas: List, no_finan_df):
     print(acreditable.emisor_nombre.unique().tolist())
     print('Instituciones de no financiero: ')
     print(no_finan_df.institucion_id.unique().tolist())
-    factura_no_financiero = int(input("Te facturo el sistema no financiero?: "))
-    if not bool(factura_no_financiero):
-        my_total_acreditable = iva_acreditable + no_finan_df.iva_comision.sum()
-    else:
-        my_total_acreditable = iva_acreditable
+    factura_no_financiero = input("Instituciones que te facturaron: ")
+    instituciones_facturantes = factura_no_financiero.split(',')
+    my_total_acreditable = iva_acreditable + no_finan_df.loc[~no_finan_df.institucion_id.isin(instituciones_facturantes)].iva_comision.sum()
     
     print(f"Actividades grabadas al 16%: {round(my_total_revenue,0)}")
     print(f"IVA cobrado del periodo: {round(my_total_trasladado,0)}")
@@ -106,7 +104,6 @@ def generate_iva_mensual_report(facturas: List, no_finan_df):
     iva_retenido = my_revenue.iva_retenido.sum()
     print(f"IVA retenido: {round(iva_retenido,0)}")
     print(f"Impuesto a cargo: {my_total_trasladado-my_total_acreditable-iva_retenido}")
-    #pudb.set_trace()
 
 def generate_isr_semestral_report(since_date, until_date, revenue_no_financiero, isr_info):
     no_finan_df = pd.DataFrame(revenue_no_financiero)
@@ -120,6 +117,7 @@ def generate_isr_semestral_report(since_date, until_date, revenue_no_financiero,
     ajustes_inflacion = []
     isr_retenido = []
     for institucion_id in no_finan_df.institucion_id.unique():
+        print(f"Working with {institucion_id}")
         saldo_diario = no_finan_df.loc[no_finan_df.institucion_id == institucion_id].set_index('fecha').resample('D').sum()
         saldo_diario['saldo'] = saldo_diario.total.cumsum()
         saldo_diario = saldo_diario.loc[saldo_diario.index >= since_date]
@@ -134,11 +132,16 @@ def generate_isr_semestral_report(since_date, until_date, revenue_no_financiero,
         intereses_reales.append(interes_real)
         intereses_nominales.append(interes_nominal)
         ajustes_inflacion.append(ajuste)
+    ingresos_div_inter = sum([float(num) for num in input("Ingresos por dividendos en el extranjero: ").split(",")])
+    print(f"Total de ingresos por dividendos en el extranjero: {ingresos_div_inter}")
+    intereses_reales.append(ingresos_div_inter)
+    intereses_nominales.append(ingresos_div_inter)
+    print("%%%%Ingresos totales en el semestre.")
     print(f"Ingresos percibidos: {sum(intereses_nominales)}")
     print(f"Deducciones autorizadas: {sum(ajustes_inflacion)}")
     print(f"Base gravable: {sum(intereses_reales)}")
     isr_level = isr_info.loc[(isr_info.limite_inferior <= interes_real)&(isr_info.limite_superior >= interes_real)].iloc[0]
-    isr_tarifa = isr_level.cuota + (intereses_reales - isr_level.limite_inferior) * (isr_level.tasa/100)
+    isr_tarifa = isr_level.cuota + (sum(intereses_reales) - isr_level.limite_inferior) * (isr_level.tasa/100)
     print(f"Impuesto conforme a tarifa: {isr_tarifa}")
     print(isr_info)
     print("Como declarar https://youtu.be/wjatcerwrtw?t=250")
@@ -173,6 +176,7 @@ def generate_isr_anual_report(facturas: List, nominas: List, nofinanciero):
     ingresos_table = pd.DataFrame([ingreso_anual, ingreso_exento, retenciones_isr]).T
     print(ingresos_table)
     print('#################Gastos Authorizados############################')
+    
     print('##################Otros ingresos###############')
     no_finan_df = pd.DataFrame(nofinanciero)
     no_finan_df['total'] = no_finan_df.abono + no_finan_df.interes - no_finan_df.comision - no_finan_df.recuperacion - no_finan_df.capital

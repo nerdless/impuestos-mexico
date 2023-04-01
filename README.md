@@ -4,6 +4,11 @@ Este programa simplica la labor de declaracion de impuestos para una persona fis
 ## Inverisiones en el sistema no financiero
 Los impuestos que se pagan en inversiones en el sistema no finaciero son el IVA y el ISR, estos datos son guardados de manera diaria en la tabla `diario_no_finaciero` y los valores que se guardan dependen de la institucion:
 
+## Empezar el programa
+`make bash`
+`python src/main.py [rfc]  [anio] --type mensual --periodo 8`
+
+
 ### Prestadero
 - `institucion_id`: `prestadero`
 - `abono`: Monto invertido, esto es monto en invertido en un prestamo. Tipo de movimiento `FONDEO` campo importe.Suma al saldo.
@@ -40,7 +45,7 @@ Los datos de doopla son tomados directamente de su API y transformados de la sig
 Los datos de yotepresto son tomados directamente de su API y transformados de la siguiente manera
 - `institucion_id`: `yotepresto`
 - `abono`: Es la suma de los montos donde el tipo es "Préstamo" multilicado por -1.
-- `comision`: Es el monto donde `tipo` es `Comisión` divido entre 1.16. 
+- `comision`: Es el monto donde `tipo` es `Comisión` divido entre -1.16. 
 - `iva_comision`: Es `comision` por 0.16.
 - `interes`: Es la suma de la columna intereses y la columna moratorios donde tipo es pago
 - `iva_interes`: Es el `interes` multiplicado por 0.16.
