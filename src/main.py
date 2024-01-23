@@ -42,7 +42,7 @@ def get_inflacion(date):
     inflacion_data['inflacion'] = inflacion_data.inflacion.astype(float)
     return inflacion_data.loc[date.replace(day=1)].iloc[0]
 
-def classify_facturas_deducibles(facturas: List):
+def classify_facturas_deducibles(facturas: List, my_rfc: str):
     """ Classify facturas as deducibles."""
     # Look for conceptos not classified
     concepto_repo = MySQLConceptosRepository(logging.getLogger(), localconfig)
@@ -53,7 +53,10 @@ def classify_facturas_deducibles(facturas: List):
             if concepto.deducible is None:
                 # ask for a classifycation
                 print(concepto)
-                concepto.deducible = bool(int(input('Is that concepto deducible?: ')))
+                if factura.emisor_rfc != my_rfc:
+                    concepto.deducible = bool(int(input('Is that concepto deducible?: ')))
+                else:
+                    concepto.deducible = True
                 concepto.regimen_id = int(int(input('Provide the regimen id o this concept: ')))
                 # add deducible
                 concepto_repo.add(Deducible(**concepto.dict()))
@@ -68,13 +71,19 @@ def classify_facturas_deducibles(facturas: List):
 def generate_isr_servicios_report(facturas: List):
     print("#### ISR persona fisica report ########")
     data = pd.DataFrame([fact.dict() for fact in facturas])
-    acreditable = data.loc[(data.emisor_rfc != my_rfc)&(data.tipo_comprobante.isin(['I', 'ingreso']))&(data.regimen_id == 1)]
-    gastos =  acreditable.subtotal.sum()
-    print(f"Total gastos: {gastos}")
-    ingresos_facts = data.loc[(data.emisor_rfc == my_rfc)&(data.tipo_comprobante.isin(['I', 'ingreso']))&(data.regimen_id == 1)]
-    ingresos =  ingresos_facts.subtotal.sum()
-    print(f"Ingresos: {ingresos}")
-    pudb.set_trace()
+    income_cond = (data.emisor_rfc == my_rfc)&(data.tipo_comprobante.isin(['I', 'ingreso']))
+    my_income = data.loc[income_cond]
+    import pudb; pudb.set_trace()
+    for regimen in data.regimen_id.unique():
+        print(f"%%%%%%%%%%%%% Regimen: {regimen} %%%%%%%%%%%%%%%")
+        acreditable = data.loc[(data.emisor_rfc != my_rfc)&(data.tipo_comprobante.isin(['I', 'ingreso']))&(data.regimen_id == regimen)]
+        gastos =  acreditable.subtotal.sum()
+        print(f"Total gastos: {gastos}")
+        ingresos_facts = data.loc[income_cond&(data.regimen_id == regimen)]
+        ingresos =  ingresos_facts.subtotal.sum()
+        print(f"Ingresos: {ingresos}")
+        isr_retenido = ingresos_facts.isr_retenido.sum()
+        print(f"ISR retenido: {isr_retenido}")
 
 def generate_iva_mensual_report(facturas: List, no_finan_df):
     """ Generate IVA report"""
@@ -104,6 +113,8 @@ def generate_iva_mensual_report(facturas: List, no_finan_df):
     iva_retenido = my_revenue.iva_retenido.sum()
     print(f"IVA retenido: {round(iva_retenido,0)}")
     print(f"Impuesto a cargo: {my_total_trasladado-my_total_acreditable-iva_retenido}")
+    import pudb; pudb.set_trace()
+
 
 def generate_isr_semestral_report(since_date, until_date, revenue_no_financiero, isr_info):
     no_finan_df = pd.DataFrame(revenue_no_financiero)
@@ -156,7 +167,7 @@ def generate_isr_mensual_report(facturas: List, revenue_no_financiero):
     facturas_df = pd.DataFrame([fact.dict() for fact in facturas_this_month])
     no_financiero_df = pd.DataFrame(revenue_no_financiero)
     print(f"Ingresos percibidos: {no_financiero_df.interes.sum()}")
-    deduccines = 0
+    deducciones = 0
     utilidad = no_financiero_df.interes.sum() - deducciones
     print(f"Deducciones autorizadas: {deducciones}")
     print(len(facturas))
@@ -176,10 +187,60 @@ def generate_isr_anual_report(facturas: List, nominas: List, nofinanciero):
     ingresos_table = pd.DataFrame([ingreso_anual, ingreso_exento, retenciones_isr]).T
     print(ingresos_table)
     print('#################Gastos Authorizados############################')
+    facturas_df = pd.DataFrame([fact.dict() for fact in facturas])
+    regimen_condition = (facturas_df.regimen_id == 1)
+    rfc_condition = (facturas_df.emisor_rfc != my_rfc)
+    deducible_condition = (facturas_df.deducible == True)
+    conditions = (facturas_df.tipo_comprobante.isin(['I', 'ingreso']))&(regimen_condition)&(rfc_condition)&(deducible_condition)
+    gastos = facturas_df.loc[conditions].subtotal.sum()    
+    print(f"Gastos autorizados: {gastos}")
+    print("Pagos provisionales: 0, No calculado aun")
+    isr_retenido_conditions = regimen_condition&(facturas_df.tipo_comprobante.isin(['I', 'ingreso']))&(facturas_df.emisor_rfc == my_rfc)
+    isr_retenido = facturas_df.loc[isr_retenido_conditions].isr_retenido.sum()
+    print(f"ISR retenido: {isr_retenido}")
+    print("##################Arrendamiento##################")
+    print("Ingresos de fibras, briq, 100ladrillos")
+    # Ingresos cobrados
     
+    # Ingresos exentos
+    # Ingresos por Fibras
+    # Retenciones de ISR, tabla con rfc de retenedor, monto ingreso recibido, y monto retenido
+    print("##################Intereses##################")
+    # Para sistema financiero
+    # Tabla con rfc de emisor, monto de intereses nominales, monto de intereses reales, perdida y retenciones de isr
+    # Para sistema no financiero
+    # Tabla con rfc de emisor, monto de intereses nominales, monto de intereses reales, perdida y retenciones de isr
+    # Perdida de ejercicios anteriores
+    print("##################Dividendos##################")
+    # Tabla con rfc de emisor, monto de dividendos, isr pagado por la sociendad
     print('##################Otros ingresos###############')
     no_finan_df = pd.DataFrame(nofinanciero)
     no_finan_df['total'] = no_finan_df.abono + no_finan_df.interes - no_finan_df.comision - no_finan_df.recuperacion - no_finan_df.capital
+    # Ingresos obtenidos
+    # Ingresos exentos
+    # Pagos provisionales
+    # ISR retenido
+    print('##################Enajenacion de inmuebles###############')
+    #Bitso https://youtu.be/PNF1eOrFv6g?t=804
+    print('##################Deducciones Personales###############')
+    # Monto total deducible
+    income_cond = (facturas_df.emisor_rfc == my_rfc)&(facturas_df.tipo_comprobante.isin(['I', 'ingreso']))
+    for regimen in facturas_df.regimen_id.unique():
+        print(f"%%%%%%%%%%%%% Regimen: {regimen} %%%%%%%%%%%%%%%")
+        acreditable = facturas_df.loc[(facturas_df.emisor_rfc != my_rfc)&(facturas_df.tipo_comprobante.isin(['I', 'ingreso']))&(facturas_df.regimen_id == regimen)]
+        gastos =  acreditable.subtotal.sum()
+        print(f"Total gastos: {gastos}")
+        if regimen == 1:
+            acreditable["descripcion"] = acreditable.conceptos.map(lambda x: " - ".join([concepto["descripcion"] for concepto in x]))
+            print(acreditable.groupby("descripcion").subtotal.sum())
+        ingresos_facts = facturas_df.loc[income_cond&(facturas_df.regimen_id == regimen)]
+        ingresos =  ingresos_facts.subtotal.sum()
+        if regimen == 1:
+            print(ingresos_facts.groupby("receptor_rfc").agg({"subtotal": "sum", "isr_retenido": "sum"}))
+        print(f"Ingresos: {ingresos}")
+        isr_retenido = ingresos_facts.isr_retenido.sum()
+        print(f"ISR retenido: {isr_retenido}")
+    
     pudb.set_trace()
     print(len(facturas))
 
@@ -214,8 +275,9 @@ if __name__ == "__main__":
     nomina_repo = MySQLNominasRepository(logging.getLogger(), localconfig)
     nominas = nomina_repo.filter(rfc=args.rfc, since_date=since_date.date(), until_date=until_date.date())
     nomina_repo.close_connection()
+    import pudb; pudb.set_trace()
     # Ensure all facturas are clasified between deducible and not deducible
-    facturas = classify_facturas_deducibles(facturas)
+    facturas = classify_facturas_deducibles(facturas, args.rfc)
     no_financiero_repo = MySQLNoFinancieroRepository(logging.getLogger(), localconfig)
     revenue_no_financiero = no_financiero_repo.filter(until_date=until_date.date())
     no_financiero_repo.close_connection()

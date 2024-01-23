@@ -1,3 +1,4 @@
+#python src/main.py OOME871219PL5 2019 --type anual
 build:
 	docker build -t impuestos .
 
