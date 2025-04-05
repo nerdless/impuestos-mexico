@@ -8,3 +8,4 @@ mysqlclient==2.1.1
 PyMySQL==1.0.2
 pydantic==1.10.2
 xmltodict==0.13.0
+tabula-py==2.9.0
